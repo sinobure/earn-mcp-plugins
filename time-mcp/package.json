@@ -1,0 +1,52 @@
+{
+  "name": "kw-time-mcp",
+  "version": "1.0.0",
+  "description": "MCP server providing current time, timezone conversion, duration arithmetic, and Japanese holiday lookup — no API key required",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "kw-time-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "prepare": "npm run build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui"
+  },
+  "keywords": [
+    "mcp",
+    "time",
+    "timezone",
+    "holiday",
+    "japanese-holiday",
+    "modelcontextprotocol",
+    "claude"
+  ],
+  "author": "Kento Watarai",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Kento-Watarai/earn-mcp-plugins.git",
+    "directory": "time-mcp"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@vitest/ui": "^3.2.4",
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.4"
+  }
+}

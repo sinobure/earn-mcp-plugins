@@ -1,0 +1,50 @@
+{
+  "name": "fx-rate-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for real-time exchange rates using open.er-api.com",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "fx-rate-mcp": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "prepare": "npm run build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui"
+  },
+  "keywords": [
+    "mcp",
+    "exchange-rate",
+    "currency",
+    "modelcontextprotocol",
+    "fx"
+  ],
+  "author": "Kento Watarai",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Kento-Watarai/earn-mcp-plugins.git",
+    "directory": "exchange-rate-mcp"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@vitest/ui": "^3.2.4",
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.4"
+  }
+}
