@@ -9,6 +9,8 @@ import {
   TOOLS,
   MISSING_TOKEN_MESSAGE,
   parseLine,
+  contentToBlocks,
+  withRetry,
   type NotionLike,
 } from "./server.js";
 
@@ -213,6 +215,38 @@ describe("filter / sorts / markdown", () => {
   });
 });
 
+describe("create_page / code / retry / properties", () => {
+  it("creates a page with content", async () => {
+    const n = fake();
+    (n as unknown as { pages: { create: unknown } }).pages.create = vi.fn().mockResolvedValue({ id: ID, url: "https://n/x" });
+    const out = text(await callTool(n, "create_page", { parent_page_id: ID, title: "T", content: "# H\ntext" }));
+    const call = (n.pages as unknown as { create: { mock: { calls: [any][] } } }).create.mock.calls[0]![0];
+    expect(call.parent).toEqual({ page_id: ID });
+    expect(call.children).toHaveLength(2);
+    expect(out).toContain("https://n/x");
+  });
+  it("converts quote, divider and fenced code", () => {
+    const { children } = contentToBlocks("> q\n---\n```ts\nconst a = 1;\nb()\n```");
+    expect((children as { type: string }[]).map((c) => c.type)).toEqual(["quote", "divider", "code"]);
+    expect((children[2] as any).code.rich_text[0].text.content).toBe("const a = 1;\nb()");
+    expect((children[2] as any).code.language).toBe("ts");
+  });
+  it("retries a 429 then succeeds, but gives up on other errors", async () => {
+    const e429 = Object.assign(Object.create(APIResponseError.prototype), { status: 429, code: "rate_limited", message: "slow" });
+    const fn = vi.fn().mockRejectedValueOnce(e429).mockResolvedValue("ok");
+    expect(await withRetry(fn, [1, 1])).toBe("ok");
+    const bad = vi.fn().mockRejectedValue(new Error("boom"));
+    await expect(withRetry(bad, [1, 1])).rejects.toThrow("boom");
+    expect(bad).toHaveBeenCalledTimes(1);
+  });
+  it("shows page properties in get_page", async () => {
+    const n = fake();
+    n.pages.retrieve.mockResolvedValue({ id: ID, properties: { Name: { type: "title", title: rt("Row") }, Status: { type: "select", select: { name: "Done" } } } });
+    n.blocks.children.list.mockResolvedValue({ results: [], has_more: false });
+    expect(text(await callTool(n, "get_page", { page_id: ID }))).toContain("Status: Done");
+  });
+});
+
 describe("errors", () => {
   it("adds Notion code and an action hint", async () => {
     const err = Object.create(APIResponseError.prototype);
@@ -227,10 +261,10 @@ describe("errors", () => {
 });
 
 describe("tool definitions", () => {
-  it("has annotations; only append_to_page is a write", () => {
+  it("has annotations; append_to_page and create_page are writes", () => {
     for (const t of TOOLS) {
       expect(t.annotations).toBeDefined();
-      expect(t.annotations.readOnlyHint).toBe(t.name !== "append_to_page");
+      expect(t.annotations.readOnlyHint).toBe(!["append_to_page", "create_page"].includes(t.name));
     }
   });
   it("blockToText handles table rows", () => {
