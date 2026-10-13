@@ -1,9 +1,7 @@
 # fx-rate-mcp
 
-[![CI](https://github.com/Kento-Watarai/earn-mcp-plugins/actions/workflows/ci.yml/badge.svg)](https://github.com/Kento-Watarai/earn-mcp-plugins/actions/workflows/ci.yml)
+[![CI](https://github.com/sinobure/earn-mcp-plugins/actions/workflows/ci.yml/badge.svg)](https://github.com/sinobure/earn-mcp-plugins/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/fx-rate-mcp.svg)](https://www.npmjs.com/package/fx-rate-mcp)
-
-> ※ `exchange-rate-mcp` は既に別作者により公開済みのため、本パッケージは `fx-rate-mcp` という名前で npm 配布しています。
 
 リアルタイム為替レートを取得する MCP (Model Context Protocol) サーバーです。  
 [open.er-api.com](https://open.er-api.com) の無料エンドポイントを使用するため、APIキー不要で利用できます。
@@ -14,6 +12,12 @@
 
 ```bash
 npm install -g fx-rate-mcp
+```
+
+## Claude Code への登録
+
+```bash
+claude mcp add fx-rate -- npx -y fx-rate-mcp
 ```
 
 ## Claude Desktop への登録
@@ -27,7 +31,7 @@ npm install -g fx-rate-mcp
 ```json
 {
   "mcpServers": {
-    "exchange-rate": {
+    "fx-rate": {
       "command": "fx-rate-mcp"
     }
   }
@@ -39,7 +43,7 @@ npm install -g fx-rate-mcp
 ```json
 {
   "mcpServers": {
-    "exchange-rate": {
+    "fx-rate": {
       "command": "npx",
       "args": ["-y", "fx-rate-mcp"]
     }
@@ -63,14 +67,15 @@ npm install -g fx-rate-mcp
 
 **レスポンス例**
 ```
-1 USD = 149.85 JPY
+1 USD = 158.544079 JPY
+Data updated: 2026-10-13T00:02:31.000Z (provider updates about once a day; reference values only)
 ```
 
 ---
 
 ### `convert_currency`
 
-金額を別の通貨に変換します。
+金額を別の通貨に変換します。小数桁は変換先通貨の標準桁数を最小とし（JPY は 0 桁、USD は 2 桁など）、最大4桁まで表示します。
 
 | パラメータ | 型 | 説明 |
 |---|---|---|
@@ -83,56 +88,43 @@ npm install -g fx-rate-mcp
 
 **レスポンス例**
 ```
-1000 USD = 149,850.00 JPY (rate: 1 USD = 149.85 JPY)
+1000 USD = 158,544.079 JPY (rate: 1 USD = 158.544079 JPY)
+Data updated: 2026-10-13T00:02:31.000Z (provider updates about once a day; reference values only)
 ```
 
 ---
 
 ### `list_currencies`
 
-対応している主要通貨の一覧を表示します。
+レート提供元が対応する全通貨（約160）のコードと英語名を一覧表示します。
 
 **使用例（Claude への質問）**
 > 「対応している通貨を教えて」
 
 **レスポンス例**
 ```
-Supported currencies (15 total):
-  USD: US Dollar
-  EUR: Euro
-  JPY: Japanese Yen
+Supported currencies (162 total):
+  AED: United Arab Emirates Dirham
+  AUD: Australian Dollar
   ...
 ```
 
-## 対応通貨（主要15通貨）
+全ツールは読み取り専用（`readOnlyHint`）で、構造化出力（`structuredContent`）も返します。
 
-| コード | 通貨名 |
-|---|---|
-| USD | 米ドル |
-| EUR | ユーロ |
-| JPY | 日本円 |
-| GBP | 英ポンド |
-| AUD | 豪ドル |
-| CAD | カナダドル |
-| CHF | スイスフラン |
-| CNY | 中国人民元 |
-| HKD | 香港ドル |
-| KRW | 韓国ウォン |
-| SGD | シンガポールドル |
-| NOK | ノルウェークローネ |
-| SEK | スウェーデンクローナ |
-| DKK | デンマーククローネ |
-| NZD | ニュージーランドドル |
+## 注意事項・免責
 
-> 上記以外の通貨コードも `get_exchange_rate` / `convert_currency` で直接指定可能です（open.er-api.com が対応していれば動作します）。
+- レートは open.er-api.com の日次更新データで、5分間ローカルキャッシュされます。出力の `Data updated` が提供元の更新時刻です。
+- 参考値であり、取引・投資・会計判断の根拠として保証するものではありません。
+- 外部APIの応答が10秒を超えるとタイムアウトします。上限超過（HTTP 429）時は専用のエラーメッセージを返します。
 
 ## ローカル開発
 
 ```bash
-git clone <repo>
-cd fx-rate-mcp
-npm install
+git clone https://github.com/sinobure/earn-mcp-plugins.git
+cd earn-mcp-plugins/exchange-rate-mcp
+npm ci
 npm run build     # dist/ を生成
+npm test          # テスト実行
 npm start         # サーバー起動（stdio モード）
 ```
 

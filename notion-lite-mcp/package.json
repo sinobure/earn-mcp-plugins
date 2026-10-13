@@ -1,32 +1,39 @@
 {
   "name": "notion-lite-mcp",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Lightweight MCP server for searching, reading, and appending to Notion pages via the official Notion API",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "notion-lite-mcp": "./dist/index.js"
+    "notion-lite-mcp": "dist/index.js"
   },
   "files": [
-    "dist",
+    "dist/index.js",
+    "dist/index.d.ts",
+    "dist/server.js",
+    "dist/server.d.ts",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node -e \"require('fs').chmodSync('dist/index.js',0o755)\"",
     "start": "node dist/index.js",
-    "prepare": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:ui": "vitest --ui"
+    "test:ui": "vitest --ui",
+    "prepublishOnly": "npm test && npm run build"
   },
   "keywords": [
-    "mcp",
-    "notion",
-    "modelcontextprotocol",
+    "ai",
     "claude",
-    "notion-api"
+    "llm",
+    "mcp",
+    "mcp-server",
+    "modelcontextprotocol",
+    "notion",
+    "notion-api",
+    "notion-mcp"
   ],
   "author": "Kento Watarai",
   "license": "MIT",
@@ -42,5 +49,14 @@
     "@vitest/ui": "^3.2.4",
     "typescript": "^5.7.0",
     "vitest": "^3.2.4"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sinobure/earn-mcp-plugins.git",
+    "directory": "notion-lite-mcp"
+  },
+  "bugs": {
+    "url": "https://github.com/sinobure/earn-mcp-plugins/issues"
+  },
+  "homepage": "https://github.com/sinobure/earn-mcp-plugins/tree/main/notion-lite-mcp#readme"
 }

@@ -9,17 +9,20 @@
     "kw-time-mcp": "dist/index.js"
   },
   "files": [
-    "dist",
+    "dist/index.js",
+    "dist/index.d.ts",
+    "dist/lib.js",
+    "dist/lib.d.ts",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "start": "node dist/index.js",
-    "prepare": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:ui": "vitest --ui"
+    "test:ui": "vitest --ui",
+    "prepublishOnly": "npm run build && npm test"
   },
   "keywords": [
     "mcp",
@@ -28,13 +31,18 @@
     "holiday",
     "japanese-holiday",
     "modelcontextprotocol",
-    "claude"
+    "claude",
+    "mcp-server",
+    "datetime",
+    "dst",
+    "japan",
+    "holidays"
   ],
   "author": "Kento Watarai",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Kento-Watarai/earn-mcp-plugins.git",
+    "url": "git+https://github.com/sinobure/earn-mcp-plugins.git",
     "directory": "time-mcp"
   },
   "engines": {
@@ -48,5 +56,9 @@
     "@vitest/ui": "^3.2.4",
     "typescript": "^5.7.0",
     "vitest": "^3.2.4"
-  }
+  },
+  "bugs": {
+    "url": "https://github.com/sinobure/earn-mcp-plugins/issues"
+  },
+  "homepage": "https://github.com/sinobure/earn-mcp-plugins/tree/main/time-mcp#readme"
 }

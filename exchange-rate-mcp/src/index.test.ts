@@ -1,290 +1,126 @@
-/**
- * Unit tests for fx-rate-mcp (exchange-rate-mcp)
- *
- * Strategy: The logic functions are not exported from index.ts, so we
- * reproduce them here (or re-verify behaviour via the internal logic).
- * We also mock the MCP SDK to prevent server startup during import.
- */
-
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import {
+  CACHE_TTL_MS,
+  clearCache,
+  convertCurrency,
+  fractionDigits,
+  getExchangeRate,
+  listCurrencies,
+  validateCurrencyCode,
+} from "./core.js";
 
-// ---------------------------------------------------------------------------
-// Mock MCP SDK and stdio transport so that importing index.ts does not
-// actually start the server or block the process.
-// ---------------------------------------------------------------------------
+const ok = (rates: Record<string, number>, extra: object = {}) =>
+  ({
+    ok: true,
+    status: 200,
+    json: async () => ({ result: "success", rates, time_last_update_unix: 1_700_000_000, ...extra }),
+  }) as unknown as Response;
+const status = (s: number) => ({ ok: false, status: s, json: async () => ({}) }) as unknown as Response;
 
-vi.mock("@modelcontextprotocol/sdk/server/index.js", () => ({
-  Server: vi.fn().mockImplementation(() => ({
-    setRequestHandler: vi.fn(),
-    connect: vi.fn().mockResolvedValue(undefined),
-  })),
-}));
-
-vi.mock("@modelcontextprotocol/sdk/server/stdio.js", () => ({
-  StdioServerTransport: vi.fn().mockImplementation(() => ({})),
-}));
-
-vi.mock("@modelcontextprotocol/sdk/types.js", () => ({
-  CallToolRequestSchema: "CallToolRequestSchema",
-  ListToolsRequestSchema: "ListToolsRequestSchema",
-}));
-
-// ---------------------------------------------------------------------------
-// Reproduce the pure logic functions under test
-// (Keeps tests self-contained without exporting from production code)
-// ---------------------------------------------------------------------------
-
-const ISO_4217 = /^[A-Z]{3}$/;
-
-function validateCurrencyCode(code: string, label: string): string {
-  const upper = code.toUpperCase();
-  if (!ISO_4217.test(upper)) {
-    throw new Error(
-      `Invalid ${label} currency code: "${code}". Use a 3-letter ISO 4217 code (e.g. USD, JPY, EUR).`
-    );
-  }
-  return upper;
-}
-
-interface CacheEntry {
-  rates: Record<string, number>;
-  fetchedAt: number;
-}
-
-const CACHE_TTL_MS = 5 * 60 * 1000;
-let rateCache = new Map<string, CacheEntry>();
-
-function getCached(baseCurrency: string): Record<string, number> | null {
-  const entry = rateCache.get(baseCurrency);
-  if (!entry) return null;
-  if (Date.now() - entry.fetchedAt > CACHE_TTL_MS) {
-    rateCache.delete(baseCurrency);
-    return null;
-  }
-  return entry.rates;
-}
-
-function setCache(baseCurrency: string, rates: Record<string, number>): void {
-  rateCache.set(baseCurrency, { rates, fetchedAt: Date.now() });
-}
-
-async function fetchRates(baseCurrency: string): Promise<Record<string, number>> {
-  const cached = getCached(baseCurrency);
-  if (cached) return cached;
-
-  const url = `https://open.er-api.com/v6/latest/${baseCurrency.toUpperCase()}`;
-  const response = await fetch(url);
-
-  if (!response.ok) {
-    throw new Error(
-      `Exchange rate API returned HTTP ${response.status} for base currency "${baseCurrency}".`
-    );
-  }
-
-  const data = (await response.json()) as {
-    result: string;
-    rates: Record<string, number>;
-  };
-
-  if (data.result !== "success") {
-    throw new Error(
-      `Exchange rate API error for base currency "${baseCurrency}": result=${data.result}`
-    );
-  }
-
-  setCache(baseCurrency, data.rates);
-  return data.rates;
-}
-
-async function handleConvertCurrency(
-  amount: number,
-  from: string,
-  to: string
-): Promise<string> {
-  if (typeof amount !== "number" || !isFinite(amount) || amount < 0) {
-    throw new Error(`Invalid amount: ${amount}. Must be a non-negative finite number.`);
-  }
-
-  const fromUpper = validateCurrencyCode(from, "source");
-  const toUpper = validateCurrencyCode(to, "target");
-
-  const rates = await fetchRates(fromUpper);
-
-  if (!(toUpper in rates)) {
-    throw new Error(`Currency "${toUpper}" is not available.`);
-  }
-
-  const rate = rates[toUpper];
-  const converted = amount * rate;
-  const formatted = converted.toLocaleString("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 4,
-  });
-
-  return `${amount} ${fromUpper} = ${formatted} ${toUpper} (rate: 1 ${fromUpper} = ${rate} ${toUpper})`;
-}
-
-async function handleGetExchangeRate(from: string, to: string): Promise<string> {
-  const fromUpper = validateCurrencyCode(from, "source");
-  const toUpper = validateCurrencyCode(to, "target");
-
-  const rates = await fetchRates(fromUpper);
-
-  if (!(toUpper in rates)) {
-    throw new Error(`Currency "${toUpper}" is not available.`);
-  }
-
-  const rate = rates[toUpper];
-  return `1 ${fromUpper} = ${rate} ${toUpper}`;
-}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
+let fetchMock: ReturnType<typeof vi.fn>;
+beforeEach(() => {
+  clearCache();
+  fetchMock = vi.fn();
+  vi.stubGlobal("fetch", fetchMock);
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
 
 describe("validateCurrencyCode", () => {
-  it("accepts valid 3-letter uppercase ISO 4217 code", () => {
-    expect(validateCurrencyCode("USD", "source")).toBe("USD");
-    expect(validateCurrencyCode("JPY", "source")).toBe("JPY");
-    expect(validateCurrencyCode("EUR", "target")).toBe("EUR");
-  });
-
-  it("normalises lowercase to uppercase", () => {
-    expect(validateCurrencyCode("usd", "source")).toBe("USD");
-    expect(validateCurrencyCode("jpy", "target")).toBe("JPY");
-  });
-
-  it("rejects codes shorter than 3 characters", () => {
-    expect(() => validateCurrencyCode("US", "source")).toThrow("Invalid source currency code");
-  });
-
-  it("rejects codes longer than 3 characters", () => {
-    expect(() => validateCurrencyCode("USDT", "source")).toThrow("Invalid source currency code");
-  });
-
-  it("rejects codes containing digits", () => {
-    expect(() => validateCurrencyCode("US1", "source")).toThrow("Invalid source currency code");
-  });
-
-  it("rejects empty string", () => {
-    expect(() => validateCurrencyCode("", "source")).toThrow("Invalid source currency code");
-  });
+  it("normalises and accepts valid codes", () => expect(validateCurrencyCode(" jpy ", "x")).toBe("JPY"));
+  it.each(["US", "USDD", "U1D", ""])("rejects %j", (c) =>
+    expect(() => validateCurrencyCode(c, "source")).toThrow(/Invalid source/)
+  );
 });
 
-describe("get_exchange_rate (mocked fetch)", () => {
-  beforeEach(() => {
-    rateCache.clear();
+describe("getExchangeRate", () => {
+  it("returns rate with update time and structured data", async () => {
+    fetchMock.mockResolvedValue(ok({ JPY: 150.5 }));
+    const r = await getExchangeRate("usd", "jpy");
+    expect(r.text).toContain("1 USD = 150.5 JPY");
+    expect(r.text).toContain("2023-11-14T22:13:20.000Z");
+    expect(r.data).toMatchObject({ from: "USD", to: "JPY", rate: 150.5 });
+    expect(fetchMock.mock.calls[0][0]).toBe("https://open.er-api.com/v6/latest/USD");
+    expect(fetchMock.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
   });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
+  it("errors on unavailable target", async () => {
+    fetchMock.mockResolvedValue(ok({ JPY: 1 }));
+    await expect(getExchangeRate("USD", "ZZZ")).rejects.toThrow(/not available/);
   });
-
-  it("returns formatted rate string on success", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+  it("gives a dedicated 429 message", async () => {
+    fetchMock.mockResolvedValue(status(429));
+    await expect(getExchangeRate("USD", "JPY")).rejects.toThrow(/rate limit.*1,500/);
+  });
+  it("reports other HTTP errors", async () => {
+    fetchMock.mockResolvedValue(status(500));
+    await expect(getExchangeRate("USD", "JPY")).rejects.toThrow(/HTTP 500/);
+  });
+  it("translates unsupported-code", async () => {
+    fetchMock.mockResolvedValue({
       ok: true,
-      json: async () => ({ result: "success", rates: { JPY: 149.5 } }),
-    } as unknown as Response);
-
-    const result = await handleGetExchangeRate("USD", "JPY");
-    expect(result).toBe("1 USD = 149.5 JPY");
-  });
-
-  it("throws when API returns non-ok HTTP status", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
-      ok: false,
-      status: 429,
-    } as unknown as Response);
-
-    await expect(handleGetExchangeRate("USD", "JPY")).rejects.toThrow("HTTP 429");
-  });
-
-  it("throws when target currency is not in rates", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ result: "success", rates: { EUR: 0.92 } }),
-    } as unknown as Response);
-
-    await expect(handleGetExchangeRate("USD", "JPY")).rejects.toThrow("JPY");
-  });
-});
-
-describe("convert_currency – amount validation", () => {
-  beforeEach(() => {
-    rateCache.clear();
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it("rejects negative amounts", async () => {
-    await expect(handleConvertCurrency(-1, "USD", "JPY")).rejects.toThrow(
-      "Invalid amount"
-    );
-  });
-
-  it("rejects Infinity", async () => {
-    await expect(handleConvertCurrency(Infinity, "USD", "JPY")).rejects.toThrow(
-      "Invalid amount"
-    );
-  });
-
-  it("rejects NaN", async () => {
-    await expect(handleConvertCurrency(NaN, "USD", "JPY")).rejects.toThrow(
-      "Invalid amount"
-    );
-  });
-
-  it("converts 100 USD to JPY correctly", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
-      ok: true,
-      json: async () => ({ result: "success", rates: { JPY: 150.0 } }),
-    } as unknown as Response);
-
-    const result = await handleConvertCurrency(100, "USD", "JPY");
-    expect(result).toContain("100 USD =");
-    expect(result).toContain("JPY");
-  });
-});
-
-describe("cache TTL behaviour", () => {
-  beforeEach(() => {
-    rateCache.clear();
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it("returns cached rates within TTL without calling fetch again", async () => {
-    const mockFetch = vi.spyOn(globalThis, "fetch").mockResolvedValue({
-      ok: true,
-      json: async () => ({ result: "success", rates: { JPY: 149.0 } }),
-    } as unknown as Response);
-
-    // First call — hits network
-    await handleGetExchangeRate("USD", "JPY");
-    // Second call — should use cache
-    await handleGetExchangeRate("USD", "JPY");
-
-    expect(mockFetch).toHaveBeenCalledTimes(1);
-  });
-
-  it("re-fetches after TTL expires", async () => {
-    const mockFetch = vi.spyOn(globalThis, "fetch").mockResolvedValue({
-      ok: true,
-      json: async () => ({ result: "success", rates: { JPY: 149.0 } }),
-    } as unknown as Response);
-
-    // Manually insert a stale entry (fetchedAt 6 minutes ago)
-    rateCache.set("USD", {
-      rates: { JPY: 140.0 },
-      fetchedAt: Date.now() - 6 * 60 * 1000,
+      status: 200,
+      json: async () => ({ result: "error", "error-type": "unsupported-code" }),
     });
+    await expect(getExchangeRate("XXX", "JPY")).rejects.toThrow(/"XXX" is not supported/);
+  });
+  it("guards invalid JSON and missing rates", async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => {
+        throw new SyntaxError("x");
+      },
+    });
+    await expect(getExchangeRate("USD", "JPY")).rejects.toThrow(/not valid JSON/);
+    fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({ result: "success" }) });
+    await expect(getExchangeRate("USD", "JPY")).rejects.toThrow(/did not contain any rates/);
+  });
+  it("maps timeout and network failures", async () => {
+    fetchMock.mockRejectedValueOnce(Object.assign(new Error("t"), { name: "TimeoutError" }));
+    await expect(getExchangeRate("USD", "JPY")).rejects.toThrow(/did not respond/);
+    fetchMock.mockRejectedValueOnce(new Error("ENOTFOUND"));
+    await expect(getExchangeRate("USD", "JPY")).rejects.toThrow(/Could not reach.*ENOTFOUND/);
+  });
+});
 
-    await handleGetExchangeRate("USD", "JPY");
-    // fetch should have been called to refresh the stale cache
-    expect(mockFetch).toHaveBeenCalledTimes(1);
+describe("convertCurrency", () => {
+  it.each([-1, Infinity, NaN, "5" as unknown as number])("rejects amount %j", async (a) => {
+    await expect(convertCurrency(a, "USD", "JPY")).rejects.toThrow(/Invalid amount/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+  it("uses target currency decimals (JPY 0, USD 2)", async () => {
+    fetchMock.mockResolvedValue(ok({ JPY: 150.5, EUR: 0.9 }));
+    expect((await convertCurrency(100, "USD", "JPY")).text).toContain("= 15,050 JPY");
+    expect((await convertCurrency(100, "USD", "EUR")).text).toContain("= 90.00 EUR");
+  });
+  it("fractionDigits per currency", () => {
+    expect(fractionDigits("JPY").min).toBe(0);
+    expect(fractionDigits("KWD").min).toBe(3);
+  });
+});
+
+describe("cache", () => {
+  it("caches within TTL, refetches after, and dedupes concurrent calls", async () => {
+    vi.useFakeTimers();
+    fetchMock.mockResolvedValue(ok({ JPY: 1 }));
+    await Promise.all([getExchangeRate("USD", "JPY"), getExchangeRate("USD", "JPY")]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await getExchangeRate("USD", "JPY");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(CACHE_TTL_MS + 1);
+    await getExchangeRate("USD", "JPY");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("listCurrencies", () => {
+  it("lists all rate keys sorted with names", async () => {
+    fetchMock.mockResolvedValue(ok({ USD: 1, JPY: 150, EUR: 0.9 }));
+    const r = await listCurrencies();
+    expect(r.data.count).toBe(3);
+    expect(r.text).toContain("Supported currencies (3 total)");
+    expect(r.text).toMatch(/EUR: Euro\n\s+JPY: Japanese Yen\n\s+USD: US Dollar/);
   });
 });
