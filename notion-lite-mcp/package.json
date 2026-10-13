@@ -12,7 +12,8 @@
     "dist/server.js",
     "dist/server.d.ts",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsc && node -e \"require('fs').chmodSync('dist/index.js',0o755)\"",
