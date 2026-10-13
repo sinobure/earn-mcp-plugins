@@ -7,6 +7,14 @@ Notion の公式 SDK を使い、Claude Desktop / Claude Code からページの
 
 ---
 
+## Quick start (English)
+
+```bash
+claude mcp add notion -e NOTION_API_KEY=<your integration token> -- npx -y notion-lite-mcp
+```
+
+Search, read, query and append to Notion pages via the official Notion API. Create an internal integration at https://www.notion.so/profile/integrations and share the pages with it. Tool descriptions and error hints are in English; the detailed guide below is in Japanese.
+
 ## 必要なもの
 
 - Node.js 18 以上
@@ -194,12 +202,12 @@ NOTION_API_KEY=ntn_xxxx npm start
 
 ---
 
-## ライセンス
-
-MIT
-
 ## 既知の制約
 
 - `get_page` はページ本文（ブロック）を返し、ページのプロパティは返しません。DB の行のプロパティは `query_database` で読めます（DB もインテグレーションへの共有が必要）。
 - Notion API `2022-06-28` 固定（`@notionhq/client` v2）です。複数データソースを持つ新方式の DB には未対応です。
 - エラーメッセージのヒントは英語です。
+
+## ライセンス
+
+MIT

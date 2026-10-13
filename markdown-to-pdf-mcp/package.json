@@ -3,8 +3,6 @@
   "version": "1.0.0",
   "description": "MCP server that converts Markdown to print-optimized A4 HTML (not a PDF: save as PDF via browser Ctrl+P). No API key required.",
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
   "bin": {
     "md2pdf-mcp": "dist/index.js"
   },
@@ -35,7 +33,10 @@
     "modelcontextprotocol",
     "md2pdf"
   ],
-  "author": "Kento Watarai",
+  "author": {
+    "name": "Kento Watarai",
+    "url": "https://github.com/sinobure"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -58,5 +59,8 @@
   "bugs": {
     "url": "https://github.com/sinobure/earn-mcp-plugins/issues"
   },
-  "homepage": "https://github.com/sinobure/earn-mcp-plugins/tree/main/markdown-to-pdf-mcp#readme"
+  "homepage": "https://github.com/sinobure/earn-mcp-plugins/tree/main/markdown-to-pdf-mcp#readme",
+  "publishConfig": {
+    "access": "public"
+  }
 }

@@ -8,6 +8,14 @@
 
 > **⚠️ 無料プランの制限**: open.er-api.com の無料プランは **月1,500リクエスト** が上限です。超過時は HTTP 429 が返り、キャッシュが切れた以降のリクエストが失敗します。商用利用・大量呼び出しが想定される場合は、このサーバーを使わず有料の為替APIを直接利用することを検討してください。
 
+## Quick start (English)
+
+```bash
+claude mcp add fx-rate -- npx -y fx-rate-mcp
+```
+
+Then ask: "Convert 1000 USD to JPY". No API key needed (open.er-api.com free tier, 1,500 requests/month). Note: the directory is `exchange-rate-mcp` but the npm package is `fx-rate-mcp`. The detailed guide below is in Japanese.
+
 ## インストール
 
 ```bash

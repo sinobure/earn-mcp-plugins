@@ -3,8 +3,6 @@
   "version": "1.0.0",
   "description": "MCP server providing current time, timezone conversion, duration arithmetic, and Japanese holiday lookup — no API key required",
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
   "bin": {
     "kw-time-mcp": "dist/index.js"
   },
@@ -38,7 +36,10 @@
     "japan",
     "holidays"
   ],
-  "author": "Kento Watarai",
+  "author": {
+    "name": "Kento Watarai",
+    "url": "https://github.com/sinobure"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -60,5 +61,8 @@
   "bugs": {
     "url": "https://github.com/sinobure/earn-mcp-plugins/issues"
   },
-  "homepage": "https://github.com/sinobure/earn-mcp-plugins/tree/main/time-mcp#readme"
+  "homepage": "https://github.com/sinobure/earn-mcp-plugins/tree/main/time-mcp#readme",
+  "publishConfig": {
+    "access": "public"
+  }
 }
