@@ -11,7 +11,9 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 
-export const VERSION = "1.1.0";
+import { createRequire } from "node:module";
+
+export const VERSION: string = (createRequire(import.meta.url)("../package.json") as { version: string }).version;
 
 /** Subset of the Notion client used here (allows test doubles). */
 export type NotionLike = Pick<Client, "search" | "pages" | "blocks" | "databases">;
@@ -227,8 +229,11 @@ function propertyToText(p: PageObjectResponse["properties"][string]): string {
 
 function truncate(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;
+  let end = maxChars;
+  const last = text.charCodeAt(end - 1);
+  if (last >= 0xd800 && last <= 0xdbff) end -= 1; // never cut inside a surrogate pair
   return (
-    text.slice(0, maxChars) +
+    text.slice(0, end) +
     `\n\n[truncated at ${maxChars} characters. Use list_children on a sub-block, or raise max_chars (max 200000).]`
   );
 }
@@ -297,7 +302,7 @@ export async function handleGetPage(
   return truncate(lines.join("\n"), maxChars);
 }
 
-/** Split text into chunks of at most `size` characters (by code point). */
+/** Split text into chunks of at most `size` characters (UTF-16 length, never splitting a surrogate pair). */
 export function chunkText(text: string, size = MAX_RICH_TEXT): string[] {
   // Split by UTF-16 length (never inside a surrogate pair) so every chunk stays within Notion's limit.
   const chunks: string[] = [];

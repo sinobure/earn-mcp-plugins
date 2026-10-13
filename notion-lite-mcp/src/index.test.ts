@@ -123,6 +123,9 @@ describe("get_page", () => {
 describe("append_to_page", () => {
   it("splits long lines into <=2000 char rich_text", async () => {
     expect(chunkText("x".repeat(4500)).map((c) => c.length)).toEqual([2000, 2000, 500]);
+    const emoji = chunkText("😀".repeat(1500));
+    expect(emoji.every((c) => c.length <= 2000)).toBe(true);
+    expect(emoji.join("")).toBe("😀".repeat(1500));
     const n = fake();
     await callTool(n, "append_to_page", { page_id: ID, content: "y".repeat(2500) });
     const kids = n.blocks.children.append.mock.calls[0]![0].children;
