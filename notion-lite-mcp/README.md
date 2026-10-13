@@ -1,11 +1,9 @@
 # notion-lite-mcp
 
-[![CI](https://github.com/Kento-Watarai/earn-mcp-plugins/actions/workflows/ci.yml/badge.svg)](https://github.com/Kento-Watarai/earn-mcp-plugins/actions/workflows/ci.yml)
-[![npm version](https://img.shields.io/npm/v/notion-lite-mcp.svg)](https://www.npmjs.com/package/notion-lite-mcp)
+[![CI](https://github.com/sinobure/earn-mcp-plugins/actions/workflows/ci.yml/badge.svg)](https://github.com/sinobure/earn-mcp-plugins/actions/workflows/ci.yml)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Notion の公式 SDK を使い、Claude Desktop / Claude Code からページの検索・読み取り・追記ができる軽量 MCP サーバーです。
-
-> **第6.1章と連動**: Kindle本「実践MCP開発入門」第6章の実装例をベースに、`list_children` ツールを追加した実用版です。
 
 ---
 
@@ -24,14 +22,15 @@ Notion の公式 SDK を使い、Claude Desktop / Claude Code からページの
 2. 「新しいインテグレーション」をクリック
 3. 名前を入力（例: `Claude MCP`）し、ワークスペースを選択
 4. 「送信」をクリック
-5. 表示された **「内部インテグレーションシークレット」** をコピーして保存する
+5. 表示された **「内部インテグレーションシークレット」** をコピーして保存する（`ntn_` で始まる文字列。以前に作成したものは `secret_` 始まりで、どちらも使えます）
+6. 「機能」タブで「コンテンツを読み取る」「コンテンツを更新する」が有効か確認する（`append_to_page` には更新権限が必要）
 
 ### 2. ページをインテグレーションに共有する
 
 Notion の各ページ（またはデータベース）はデフォルトでインテグレーションからアクセスできません。  
 アクセスしたいページを開いて共有設定を行います。
 
-1. 対象ページの右上「…」メニュー → 「コネクト」をクリック
+1. 対象ページの右上「…」メニュー → 「コネクト」(英語UIでは Connections)をクリック
 2. 作成したインテグレーション（例: `Claude MCP`）を選択
 3. 「確認」してアクセスを許可
 
@@ -67,7 +66,7 @@ npx notion-lite-mcp
     "notion-lite": {
       "command": "notion-lite-mcp",
       "env": {
-        "NOTION_API_KEY": "secret_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        "NOTION_API_KEY": "ntn_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
       }
     }
   }
@@ -83,7 +82,7 @@ npx notion-lite-mcp
       "command": "npx",
       "args": ["-y", "notion-lite-mcp"],
       "env": {
-        "NOTION_API_KEY": "secret_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        "NOTION_API_KEY": "ntn_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
       }
     }
   }
@@ -95,10 +94,10 @@ npx notion-lite-mcp
 ## Claude Code への登録
 
 ```bash
-claude mcp add notion-lite -e NOTION_API_KEY=secret_xxxx -- npx -y notion-lite-mcp
+claude mcp add notion-lite -e NOTION_API_KEY=ntn_xxxx -- npx -y notion-lite-mcp
 ```
 
-または設定ファイル（`.claude/settings.json`）に直接追記:
+または、プロジェクト直下の `.mcp.json` に追記:
 
 ```json
 {
@@ -107,7 +106,7 @@ claude mcp add notion-lite -e NOTION_API_KEY=secret_xxxx -- npx -y notion-lite-m
       "command": "npx",
       "args": ["-y", "notion-lite-mcp"],
       "env": {
-        "NOTION_API_KEY": "secret_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+        "NOTION_API_KEY": "ntn_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
       }
     }
   }
@@ -118,108 +117,35 @@ claude mcp add notion-lite -e NOTION_API_KEY=secret_xxxx -- npx -y notion-lite-m
 
 ## 提供ツール
 
-### `search_notion`
+| ツール | 種別 | 説明 |
+|---|---|---|
+| `search_notion` | 読み取り | タイトルでページ/DBを検索。`limit`(1-100)、`type`(page/database)、`cursor` |
+| `get_page` | 読み取り | ページ本文をテキスト化。入れ子ブロックを `max_depth`(既定3)まで展開、`max_chars`(既定20000)で打ち切り |
+| `list_children` | 読み取り | 直下の子ブロック一覧（type・プレビュー・ID） |
+| `query_database` | 読み取り | DB の行を取得（タイトル・URL・主要プロパティ）。`limit`、`cursor` |
+| `append_to_page` | **書き込み** | ページ末尾に段落を追記。1行2000文字超は自動分割、100ブロックごとにバッチ送信 |
 
-Notion 内のページ・データベースをキーワードで検索します。
-
-| パラメータ | 型 | 必須 | 説明 |
-|---|---|---|---|
-| `query` | string | はい | 検索キーワード |
-| `limit` | number | いいえ | 最大取得件数（1〜100、デフォルト: 10） |
-
-**使用例（Claude への質問）**
-> 「Notionで「議事録」というページを探して」
-
-**レスポンス例**
-```
-Search results for "議事録" (2 found):
-
-[page] 2024年4月 議事録
-  id: 1234abcd-12ab-12ab-12ab-1234abcd5678
-  url: https://www.notion.so/...
-  last edited: 2024-04-10
-
-[page] 2024年3月 議事録
-  id: 5678efgh-56ef-56ef-56ef-5678efgh9012
-  url: https://www.notion.so/...
-  last edited: 2024-03-28
-```
-
----
-
-### `get_page`
-
-指定したページの本文をテキストとして取得します。
-
-| パラメータ | 型 | 必須 | 説明 |
-|---|---|---|---|
-| `page_id` | string | はい | NotionページID（ハイフンあり・なし両対応） |
-
-対応ブロックタイプ: heading 1/2/3、paragraph、bulleted/numbered list、to-do、toggle、code、quote、callout、divider
+検索・DB取得は続きがあると `next_cursor` を返します。次の呼び出しの `cursor` に渡してください。
 
 **使用例（Claude への質問）**
-> 「page_id が 1234abcd-12ab-12ab-12ab-1234abcd5678 のページを読んで」
+> 「Notionで「議事録」というページを探して」「そのページを読んで」「本日の作業完了と追記して」
 
-**レスポンス例**
+**`get_page` のレスポンス例**
 ```
 # プロジェクト計画書
 (id: 1234abcd-12ab-12ab-12ab-1234abcd5678)
 
 ## 概要
 このプロジェクトでは...
-
-- タスク1
-- タスク2
-
+1. 手順1
+2. 手順2
+▸ 折りたたみ見出し
+  中身（入れ子は2スペースずつインデント）
+> 引用
 [x] 完了済み項目
-[ ] 未完了項目
 ```
 
----
-
-### `append_to_page`
-
-既存ページの末尾にテキストを追記します。改行ごとに個別の段落ブロックとして追加されます。
-
-| パラメータ | 型 | 必須 | 説明 |
-|---|---|---|---|
-| `page_id` | string | はい | NotionページID |
-| `content` | string | はい | 追記するテキスト（改行で段落を分割） |
-
-**使用例（Claude への質問）**
-> 「1234abcd-... のページに「本日の作業完了」と追記して」
-
-**レスポンス例**
-```
-Successfully appended 1 paragraph(s) to page 1234abcd-12ab-12ab-12ab-1234abcd5678.
-Preview:
-  本日の作業完了
-```
-
----
-
-### `list_children`
-
-指定したページまたはブロックの直下の子ブロック一覧を取得します。
-
-| パラメータ | 型 | 必須 | 説明 |
-|---|---|---|---|
-| `block_id` | string | はい | NotionページID またはブロックID |
-
-**使用例（Claude への質問）**
-> 「このページのブロック構造を確認して: 1234abcd-...」
-
-**レスポンス例**
-```
-Child blocks of 1234abcd-12ab-12ab-12ab-1234abcd5678 (5 total):
-
-1. [heading_1] # プロジェクト計画書
-   id: aaaa0001-...
-2. [paragraph] このプロジェクトでは...
-   id: aaaa0002-...
-3. [bulleted_list_item] - タスク1
-   id: aaaa0003-...
-```
+対応ブロック: 見出し1-3、段落、箇条書き、番号付き（連番）、To-do、トグル(`▸`)、引用(`>`)、コールアウト、コード、区切り線、テーブル行、数式、ブックマーク/埋め込み。画像・動画・ファイルは `[image]` 等のプレースホルダ、書式（太字・リンク等）は除いたプレーンテキストです。子ページ/子DBは展開せず ID を表示します（`get_page` / `query_database` で別途取得）。
 
 ---
 
@@ -242,27 +168,28 @@ https://www.notion.so/My-Page-1234abcd12ab12ab12ab1234abcd5678
 
 ---
 
-## 起動時の挙動について
+## トラブルシュート
 
-`NOTION_API_KEY` が未設定の場合、サーバーは即座に終了します。
-
-```
-Fatal: NOTION_API_KEY environment variable is not set.
-Create a Notion integration at https://www.notion.so/my-integrations and set the secret.
-```
-
-Claude Desktop / Code の設定ファイルで `env` に `NOTION_API_KEY` を正しく設定してください。
+| 症状 | 原因と対処 |
+|---|---|
+| `NOTION_API_KEY is not set ...` | 設定の `env` に `NOTION_API_KEY` が無い。サーバーは起動したままツール呼び出し時にこの案内を返します。設定後にクライアントを再起動 |
+| `401 unauthorized` | トークンが無効。インテグレーションのシークレットを再コピー |
+| `404 object_not_found` | ページが存在しないか **インテグレーションに共有されていない**。ページの「…」→「コネクト」で追加 |
+| `403 restricted_resource` | インテグレーションの「機能」で読み取り/更新が無効。有効化する |
+| 検索結果が0件 | 共有済みのページしか検索できません。親ページを共有してください |
+| `429 rate_limited` | 数秒待って再実行 |
 
 ---
 
 ## ローカル開発
 
 ```bash
-git clone <repo>
-cd notion-lite-mcp
+git clone https://github.com/sinobure/earn-mcp-plugins.git
+cd earn-mcp-plugins/notion-lite-mcp
 npm install
 npm run build      # dist/ を生成
-NOTION_API_KEY=secret_xxxx npm start
+npm test
+NOTION_API_KEY=ntn_xxxx npm start
 ```
 
 ---
@@ -270,3 +197,9 @@ NOTION_API_KEY=secret_xxxx npm start
 ## ライセンス
 
 MIT
+
+## 既知の制約
+
+- `get_page` はページ本文（ブロック）を返し、ページのプロパティは返しません。DB の行のプロパティは `query_database` で読めます（DB もインテグレーションへの共有が必要）。
+- Notion API `2022-06-28` 固定（`@notionhq/client` v2）です。複数データソースを持つ新方式の DB には未対応です。
+- エラーメッセージのヒントは英語です。

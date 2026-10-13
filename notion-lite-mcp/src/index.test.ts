@@ -1,233 +1,204 @@
-/**
- * Unit tests for notion-lite-mcp
- *
- * Strategy: Mock the MCP SDK and @notionhq/client to prevent server startup
- * and API calls. Pure logic functions are reproduced inline for test isolation.
- */
+import { describe, it, expect, vi } from "vitest";
+import { APIResponseError } from "@notionhq/client";
+import {
+  callTool,
+  chunkText,
+  validateAndNormalizeId,
+  blockToText,
+  createServer,
+  TOOLS,
+  MISSING_TOKEN_MESSAGE,
+  type NotionLike,
+} from "./server.js";
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+const ID = "12345678-1234-1234-1234-123456789012";
+const rt = (s: string) => [{ plain_text: s }];
+const blk = (id: string, type: string, text: string, extra: object = {}) => ({
+  id,
+  type,
+  has_children: false,
+  [type]: { rich_text: rt(text) },
+  ...extra,
+});
 
-// ---------------------------------------------------------------------------
-// Mock dependencies to prevent module-level side effects
-// ---------------------------------------------------------------------------
-
-vi.mock("@modelcontextprotocol/sdk/server/index.js", () => ({
-  Server: vi.fn().mockImplementation(() => ({
-    setRequestHandler: vi.fn(),
-    connect: vi.fn().mockResolvedValue(undefined),
-  })),
-}));
-
-vi.mock("@modelcontextprotocol/sdk/server/stdio.js", () => ({
-  StdioServerTransport: vi.fn().mockImplementation(() => ({})),
-}));
-
-vi.mock("@modelcontextprotocol/sdk/types.js", () => ({
-  CallToolRequestSchema: "CallToolRequestSchema",
-  ListToolsRequestSchema: "ListToolsRequestSchema",
-}));
-
-// Set the env variable before @notionhq/client is resolved
-process.env["NOTION_API_KEY"] = "test-key-for-unit-tests";
-
-vi.mock("@notionhq/client", () => ({
-  Client: vi.fn().mockImplementation(() => ({
-    blocks: {
-      children: {
-        list: vi.fn(),
-        append: vi.fn(),
-      },
-    },
-    pages: { retrieve: vi.fn() },
+function fake() {
+  return {
     search: vi.fn(),
-  })),
-  APIResponseError: class APIResponseError extends Error {
-    status: number;
-    constructor(message: string, status: number) {
-      super(message);
-      this.status = status;
-    }
-  },
-}));
-
-// ---------------------------------------------------------------------------
-// Reproduce pure logic functions under test
-// ---------------------------------------------------------------------------
-
-const UUID_WITH_HYPHENS =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const UUID_WITHOUT_HYPHENS = /^[0-9a-f]{32}$/i;
-
-function validateAndNormalizeId(raw: string, label: string): string {
-  const trimmed = raw.trim();
-
-  if (UUID_WITH_HYPHENS.test(trimmed)) {
-    return trimmed.toLowerCase();
-  }
-
-  if (UUID_WITHOUT_HYPHENS.test(trimmed)) {
-    const h = trimmed.toLowerCase();
-    return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
-  }
-
-  throw new Error(
-    `Invalid ${label}: "${raw}". Expected a UUID in hyphenated or plain 32-character hex format.`
-  );
+    pages: { retrieve: vi.fn() },
+    databases: { query: vi.fn() },
+    blocks: { children: { list: vi.fn(), append: vi.fn().mockResolvedValue({}) } },
+  } as unknown as NotionLike & {
+    search: ReturnType<typeof vi.fn>;
+    pages: { retrieve: ReturnType<typeof vi.fn> };
+    databases: { query: ReturnType<typeof vi.fn> };
+    blocks: { children: { list: ReturnType<typeof vi.fn>; append: ReturnType<typeof vi.fn> } };
+  };
 }
+const text = (r: { content: { text: string }[] }) => r.content[0]!.text;
 
-function richTextToPlain(
-  richText: Array<{ plain_text: string }> | undefined
-): string {
-  if (!richText || richText.length === 0) return "";
-  return richText.map((t) => t.plain_text).join("");
-}
-
-type MockBlock = {
-  id: string;
-  type: string;
-  [key: string]: unknown;
-};
-
-function blockToText(block: MockBlock): string {
-  switch (block.type) {
-    case "heading_1": {
-      const data = block["heading_1"] as { rich_text: Array<{ plain_text: string }> };
-      return `# ${richTextToPlain(data.rich_text)}`;
-    }
-    case "heading_2": {
-      const data = block["heading_2"] as { rich_text: Array<{ plain_text: string }> };
-      return `## ${richTextToPlain(data.rich_text)}`;
-    }
-    case "heading_3": {
-      const data = block["heading_3"] as { rich_text: Array<{ plain_text: string }> };
-      return `### ${richTextToPlain(data.rich_text)}`;
-    }
-    case "paragraph": {
-      const data = block["paragraph"] as { rich_text: Array<{ plain_text: string }> };
-      return richTextToPlain(data.rich_text);
-    }
-    case "bulleted_list_item": {
-      const data = block["bulleted_list_item"] as { rich_text: Array<{ plain_text: string }> };
-      return `- ${richTextToPlain(data.rich_text)}`;
-    }
-    case "numbered_list_item": {
-      const data = block["numbered_list_item"] as { rich_text: Array<{ plain_text: string }> };
-      return `1. ${richTextToPlain(data.rich_text)}`;
-    }
-    case "divider":
-      return "---";
-    default:
-      return `[${block.type}]`;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
-describe("validateAndNormalizeId", () => {
-  it("accepts a valid UUID with hyphens and returns lowercase", () => {
-    const id = "1234abcd-12ab-12ab-12ab-1234abcd5678";
-    expect(validateAndNormalizeId(id, "page_id")).toBe(id.toLowerCase());
+describe("validation", () => {
+  it("normalizes ids", () => {
+    expect(validateAndNormalizeId("12345678123412341234123456789012", "x")).toBe(ID);
+    expect(() => validateAndNormalizeId("bad", "page_id")).toThrow(/Invalid page_id/);
+    expect(() => validateAndNormalizeId(undefined, "page_id")).toThrow(/required/);
   });
-
-  it("accepts a valid UUID with uppercase letters and normalises to lowercase", () => {
-    const id = "1234ABCD-12AB-12AB-12AB-1234ABCD5678";
-    expect(validateAndNormalizeId(id, "page_id")).toBe(id.toLowerCase());
+  it("missing arguments object gives a clean error", async () => {
+    const r = await callTool(fake(), "get_page", undefined);
+    expect(r.isError).toBe(true);
+    expect(text(r)).toContain('"page_id" is required');
+    expect(text(r)).not.toContain("destructure");
   });
-
-  it("accepts a 32-char hex without hyphens and inserts them", () => {
-    const raw = "1234abcd12ab12ab12ab1234abcd5678";
-    const expected = "1234abcd-12ab-12ab-12ab-1234abcd5678";
-    expect(validateAndNormalizeId(raw, "page_id")).toBe(expected);
-  });
-
-  it("trims surrounding whitespace before validation", () => {
-    const id = "  1234abcd-12ab-12ab-12ab-1234abcd5678  ";
-    expect(validateAndNormalizeId(id, "page_id")).toBe(
-      "1234abcd-12ab-12ab-12ab-1234abcd5678"
-    );
-  });
-
-  it("rejects a completely invalid string", () => {
-    expect(() => validateAndNormalizeId("not-a-uuid", "page_id")).toThrow(
-      "Invalid page_id"
-    );
-  });
-
-  it("rejects an empty string", () => {
-    expect(() => validateAndNormalizeId("", "page_id")).toThrow("Invalid page_id");
+  it("rejects bad limit and unknown tool", async () => {
+    expect(text(await callTool(fake(), "search_notion", { query: "a", limit: 500 }))).toContain("between 1 and 100");
+    const r = await callTool(fake(), "nope", {});
+    expect(r.isError).toBe(true);
+    expect(text(r)).toContain("Unknown tool");
   });
 });
 
-describe("blockToText – block type conversions", () => {
-  it("converts heading_1 to markdown H1", () => {
-    const block: MockBlock = {
-      id: "id1",
-      type: "heading_1",
-      heading_1: { rich_text: [{ plain_text: "Hello World" }] },
-    };
-    expect(blockToText(block)).toBe("# Hello World");
+describe("missing token", () => {
+  it("returns setup instructions from a tool call", async () => {
+    const r = await callTool(null, "search_notion", { query: "a" });
+    expect(r.isError).toBe(true);
+    expect(text(r)).toBe(`Error: ${MISSING_TOKEN_MESSAGE}`);
   });
-
-  it("converts heading_2 to markdown H2", () => {
-    const block: MockBlock = {
-      id: "id2",
-      type: "heading_2",
-      heading_2: { rich_text: [{ plain_text: "Section" }] },
-    };
-    expect(blockToText(block)).toBe("## Section");
-  });
-
-  it("converts paragraph to plain text", () => {
-    const block: MockBlock = {
-      id: "id3",
-      type: "paragraph",
-      paragraph: { rich_text: [{ plain_text: "Hello" }, { plain_text: " World" }] },
-    };
-    expect(blockToText(block)).toBe("Hello World");
-  });
-
-  it("converts bulleted_list_item to markdown list item", () => {
-    const block: MockBlock = {
-      id: "id4",
-      type: "bulleted_list_item",
-      bulleted_list_item: { rich_text: [{ plain_text: "Item one" }] },
-    };
-    expect(blockToText(block)).toBe("- Item one");
-  });
-
-  it("converts divider to horizontal rule", () => {
-    const block: MockBlock = {
-      id: "id5",
-      type: "divider",
-    };
-    expect(blockToText(block)).toBe("---");
-  });
-
-  it("handles unknown block type with fallback", () => {
-    const block: MockBlock = {
-      id: "id6",
-      type: "unsupported_type",
-    };
-    expect(blockToText(block)).toBe("[unsupported_type]");
+  it("createServer(null) has no side effects", () => {
+    expect(createServer(null)).toBeDefined();
   });
 });
 
-describe("API error handling – isError: true pattern", () => {
-  it("extractErrorMessage returns status code for APIResponseError", () => {
-    // Simulate what the production error handler does
-    const err = { status: 404, message: "object not found" };
-    const isApiError = typeof err.status === "number";
-    const message = isApiError
-      ? `Notion API error (${err.status}): ${err.message}`
-      : err.message;
-    expect(message).toBe("Notion API error (404): object not found");
+describe("get_page", () => {
+  it("numbers lists, distinguishes toggle/quote, recurses into children", async () => {
+    const n = fake();
+    n.pages.retrieve.mockResolvedValue({ properties: { Name: { type: "title", title: rt("Doc") } } });
+    n.blocks.children.list.mockImplementation(async ({ block_id }: { block_id: string }) => {
+      if (block_id === "tog") return { results: [blk("c1", "paragraph", "inner")], has_more: false };
+      return {
+        results: [
+          blk("a", "numbered_list_item", "one"),
+          blk("b", "numbered_list_item", "two"),
+          blk("tog", "toggle", "T", { has_children: true }),
+          blk("q", "quote", "Q"),
+          blk("p", "paragraph", "para"),
+          blk("c", "numbered_list_item", "restart"),
+        ],
+        has_more: false,
+      };
+    });
+    const out = text(await callTool(n, "get_page", { page_id: ID }));
+    expect(out).toContain("1. one\n2. two");
+    expect(out).toContain("▸ T\n  inner");
+    expect(out).toContain("> Q");
+    expect(out).toMatch(/1\. restart/);
   });
+  it("respects max_depth", async () => {
+    const n = fake();
+    n.pages.retrieve.mockResolvedValue({ properties: {} });
+    n.blocks.children.list.mockResolvedValue({
+      results: [blk("tog", "toggle", "T", { has_children: true })],
+      has_more: false,
+    });
+    const out = text(await callTool(n, "get_page", { page_id: ID, max_depth: 0 }));
+    expect(out).toContain("max_depth reached");
+    expect(n.blocks.children.list).toHaveBeenCalledTimes(1);
+  });
+  it("truncates with max_chars", async () => {
+    const n = fake();
+    n.pages.retrieve.mockResolvedValue({ properties: {} });
+    n.blocks.children.list.mockResolvedValue({ results: [blk("a", "paragraph", "x".repeat(5000))], has_more: false });
+    const out = text(await callTool(n, "get_page", { page_id: ID, max_chars: 1000 }));
+    expect(out).toContain("[truncated at 1000 characters");
+  });
+  it("paginates blocks", async () => {
+    const n = fake();
+    n.pages.retrieve.mockResolvedValue({ properties: {} });
+    n.blocks.children.list
+      .mockResolvedValueOnce({ results: [blk("a", "paragraph", "first")], has_more: true, next_cursor: "c2" })
+      .mockResolvedValueOnce({ results: [blk("b", "paragraph", "second")], has_more: false });
+    const out = text(await callTool(n, "get_page", { page_id: ID }));
+    expect(out).toContain("first\nsecond");
+  });
+});
 
-  it("extractErrorMessage returns message for plain Error", () => {
-    const err = new Error("page not found");
-    const message = err instanceof Error ? err.message : String(err);
-    expect(message).toBe("page not found");
+describe("append_to_page", () => {
+  it("splits long lines into <=2000 char rich_text", async () => {
+    expect(chunkText("x".repeat(4500)).map((c) => c.length)).toEqual([2000, 2000, 500]);
+    const emoji = chunkText("😀".repeat(1500));
+    expect(emoji.every((c) => c.length <= 2000)).toBe(true);
+    expect(emoji.join("")).toBe("😀".repeat(1500));
+    const n = fake();
+    await callTool(n, "append_to_page", { page_id: ID, content: "y".repeat(2500) });
+    const kids = n.blocks.children.append.mock.calls[0]![0].children;
+    expect(kids).toHaveLength(2);
+    expect(kids[0].paragraph.rich_text[0].text.content).toHaveLength(2000);
+  });
+  it("batches 100 blocks per request", async () => {
+    const n = fake();
+    const content = Array.from({ length: 250 }, (_, i) => `line ${i}`).join("\n");
+    const r = await callTool(n, "append_to_page", { page_id: ID, content });
+    expect(r.isError).toBeUndefined();
+    expect(n.blocks.children.append.mock.calls.map((c) => c[0].children.length)).toEqual([100, 100, 50]);
+  });
+  it("reports partial progress on mid-batch failure", async () => {
+    const n = fake();
+    n.blocks.children.append.mockResolvedValueOnce({}).mockRejectedValueOnce(new Error("boom"));
+    const content = Array.from({ length: 150 }, (_, i) => `l${i}`).join("\n");
+    const r = await callTool(n, "append_to_page", { page_id: ID, content });
+    expect(r.isError).toBe(true);
+    expect(text(r)).toContain("Partially appended: 100 of 150");
+  });
+  it("rejects empty content", async () => {
+    expect((await callTool(fake(), "append_to_page", { page_id: ID, content: " \n " })).isError).toBe(true);
+  });
+});
+
+describe("search_notion / query_database", () => {
+  it("passes cursor and filter, prints next_cursor", async () => {
+    const n = fake();
+    n.search.mockResolvedValue({
+      results: [{ object: "page", id: ID, url: "u", last_edited_time: "2026-01-02T00:00:00Z", properties: { t: { type: "title", title: rt("Hello") } } }],
+      has_more: true,
+      next_cursor: "NEXT",
+    });
+    const out = text(await callTool(n, "search_notion", { query: "h", cursor: "C", type: "page" }));
+    expect(n.search.mock.calls[0]![0]).toMatchObject({ start_cursor: "C", filter: { property: "object", value: "page" } });
+    expect(out).toContain("[page] Hello");
+    expect(out).toContain("next_cursor: NEXT");
+  });
+  it("queries database rows", async () => {
+    const n = fake();
+    n.databases.query.mockResolvedValue({
+      results: [{ id: ID, url: "u", properties: { Name: { type: "title", title: rt("Row") }, Tags: { type: "multi_select", multi_select: [{ name: "a" }, { name: "b" }] }, Done: { type: "checkbox", checkbox: true } } }],
+      has_more: false,
+    });
+    const out = text(await callTool(n, "query_database", { database_id: ID }));
+    expect(out).toContain("[row] Row");
+    expect(out).toContain("Tags: a, b");
+    expect(out).toContain("Done: true");
+  });
+});
+
+describe("errors", () => {
+  it("adds Notion code and an action hint", async () => {
+    const err = Object.create(APIResponseError.prototype);
+    Object.assign(err, { status: 404, code: "object_not_found", message: "Could not find page" });
+    const n = fake();
+    n.pages.retrieve.mockRejectedValue(err);
+    const r = await callTool(n, "get_page", { page_id: ID });
+    expect(r.isError).toBe(true);
+    expect(text(r)).toContain("404, object_not_found");
+    expect(text(r)).toContain("Connections");
+  });
+});
+
+describe("tool definitions", () => {
+  it("has annotations; only append_to_page is a write", () => {
+    for (const t of TOOLS) {
+      expect(t.annotations).toBeDefined();
+      expect(t.annotations.readOnlyHint).toBe(t.name !== "append_to_page");
+    }
+  });
+  it("blockToText handles table rows", () => {
+    expect(blockToText({ id: "r", type: "table_row", table_row: { cells: [rt("a"), rt("b")] } } as never)).toBe("| a | b |");
   });
 });
