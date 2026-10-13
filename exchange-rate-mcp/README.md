@@ -103,7 +103,7 @@ Data updated: 2026-10-13T00:02:31.000Z (provider updates about once a day; refer
 
 **レスポンス例**
 ```
-Supported currencies (162 total):
+Supported currencies (166 total):
   AED: United Arab Emirates Dirham
   AUD: Australian Dollar
   ...

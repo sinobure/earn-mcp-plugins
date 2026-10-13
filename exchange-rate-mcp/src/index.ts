@@ -47,7 +47,7 @@ server.registerTool(
     description:
       "Convert a non-negative amount from one currency to another using the latest cached daily rate (open.er-api.com). Output uses the target currency's standard decimal places and includes the rate and data update time. Reference values only, not for trading.",
     inputSchema: {
-      amount: z.number().finite().min(0).describe("Amount to convert in the source currency (non-negative number)"),
+      amount: z.number().finite("amount must be a finite number").min(0, "amount must be a non-negative number").describe("Amount to convert in the source currency (non-negative number)"),
       from: code("Source"),
       to: code("Target"),
     },
