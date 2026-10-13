@@ -34,6 +34,8 @@ const V6: Array<[string, number]> = [
   ["64:ff9b::", 96],
   ["2002::", 16],
   ["2001:db8::", 32],
+  ["2001::", 32],
+  ["fec0::", 10],
 ];
 for (const [net, prefix] of V6) blocked.addSubnet(net, prefix, "ipv6");
 

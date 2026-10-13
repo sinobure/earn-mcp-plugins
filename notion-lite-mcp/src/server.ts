@@ -299,9 +299,17 @@ export async function handleGetPage(
 
 /** Split text into chunks of at most `size` characters (by code point). */
 export function chunkText(text: string, size = MAX_RICH_TEXT): string[] {
-  const chars = Array.from(text);
+  // Split by UTF-16 length (never inside a surrogate pair) so every chunk stays within Notion's limit.
   const chunks: string[] = [];
-  for (let i = 0; i < chars.length; i += size) chunks.push(chars.slice(i, i + size).join(""));
+  let current = "";
+  for (const ch of text) {
+    if (current.length + ch.length > size) {
+      chunks.push(current);
+      current = "";
+    }
+    current += ch;
+  }
+  if (current || chunks.length === 0) chunks.push(current);
   return chunks;
 }
 

@@ -97,7 +97,7 @@ npx notion-lite-mcp
 claude mcp add notion-lite -e NOTION_API_KEY=ntn_xxxx -- npx -y notion-lite-mcp
 ```
 
-または設定ファイル（`.claude/settings.json`）に直接追記:
+または、プロジェクト直下の `.mcp.json` に追記:
 
 ```json
 {

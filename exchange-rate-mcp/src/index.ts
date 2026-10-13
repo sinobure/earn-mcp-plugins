@@ -12,7 +12,7 @@ const server = new McpServer({ name: "fx-rate-mcp", version: pkg.version });
 
 const annotations = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true };
 const code = (label: string) =>
-  z.string().trim().length(3).describe(`${label} currency code, 3-letter ISO 4217 (case-insensitive), e.g. USD, JPY, EUR`);
+  z.string().describe(`${label} currency code, 3-letter ISO 4217 (case-insensitive), e.g. USD, JPY, EUR`);
 
 type Result = { text: string; data: Record<string, unknown> };
 
