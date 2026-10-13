@@ -3,8 +3,6 @@
   "version": "1.0.0",
   "description": "MCP server for fetching and searching RSS/Atom feeds without any API key",
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
   "bin": {
     "kw-rss-mcp": "dist/index.js"
   },
@@ -31,7 +29,10 @@
     "mcp-server",
     "claude"
   ],
-  "author": "Kento Watarai",
+  "author": {
+    "name": "Kento Watarai",
+    "url": "https://github.com/sinobure"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -43,7 +44,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "fast-xml-parser": "^4.5.0"
+    "fast-xml-parser": "^5.11.2"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
@@ -53,5 +54,8 @@
   "bugs": {
     "url": "https://github.com/sinobure/earn-mcp-plugins/issues"
   },
-  "homepage": "https://github.com/sinobure/earn-mcp-plugins/tree/main/rss-mcp#readme"
+  "homepage": "https://github.com/sinobure/earn-mcp-plugins/tree/main/rss-mcp#readme",
+  "publishConfig": {
+    "access": "public"
+  }
 }

@@ -31,7 +31,7 @@ export class UserError extends Error {}
 
 export const MISSING_TOKEN_MESSAGE =
   "NOTION_API_KEY is not set. Create an internal integration at " +
-  "https://www.notion.so/my-integrations, copy its secret (starts with ntn_ or secret_), " +
+  "https://www.notion.so/profile/integrations, copy its secret (starts with ntn_ or secret_), " +
   'and set it in the MCP server "env" as NOTION_API_KEY. Then share the target pages with ' +
   'the integration (page menu "..." > "Connections") and restart the client.';
 
@@ -297,7 +297,13 @@ export async function handleGetPage(
   const blocks = await fetchAllChildren(notion, id);
   const body: string[] = [];
   await renderBlocks(notion, blocks, 0, maxDepth, body);
-  const lines = [`# ${pageTitle(page)}`, `(id: ${id})`, ""];
+  const lines = [`# ${pageTitle(page)}`, `(id: ${id})`];
+  for (const [name, prop] of Object.entries(page.properties ?? {})) {
+    if (prop.type === "title") continue;
+    const v = propertyToText(prop);
+    if (v !== "") lines.push(`${name}: ${v}`);
+  }
+  lines.push("");
   lines.push(...(body.length ? body : ["(empty page)"]));
   return truncate(lines.join("\n"), maxChars);
 }
@@ -318,6 +324,89 @@ export function chunkText(text: string, size = MAX_RICH_TEXT): string[] {
   return chunks;
 }
 
+type LineBlock = {
+  type: "paragraph" | "heading_1" | "heading_2" | "heading_3" | "bulleted_list_item" | "numbered_list_item" | "to_do" | "quote" | "divider" | "code";
+  text: string;
+  checked?: boolean;
+};
+
+/** Lightweight Markdown: "# ", "## ", "### ", "- ", "1. ", "- [ ] ", "- [x] " prefixes. */
+export function parseLine(line: string): LineBlock {
+  if (/^---+$/.test(line)) return { type: "divider", text: "" };
+  let m = /^- \[( |x|X)\] (.+)$/.exec(line);
+  if (m) return { type: "to_do", text: m[2], checked: m[1] !== " " };
+  m = /^(#{1,3}) (.+)$/.exec(line);
+  if (m) return { type: `heading_${m[1].length}` as LineBlock["type"], text: m[2] };
+  m = /^[-*] (.+)$/.exec(line);
+  if (m) return { type: "bulleted_list_item", text: m[1] };
+  m = /^> (.+)$/.exec(line);
+  if (m) return { type: "quote", text: m[1] };
+  m = /^\d+\. (.+)$/.exec(line);
+  if (m) return { type: "numbered_list_item", text: m[1] };
+  return { type: "paragraph", text: line };
+}
+
+/** Convert light Markdown (including ``` fenced code) into Notion blocks. */
+export function contentToBlocks(content: string): { children: never[]; lines: string[] } {
+  const lines: string[] = [];
+  const children: never[] = [];
+  const push = (type: LineBlock["type"], body: string, extra: Record<string, unknown> = {}) => {
+    if (type === "divider") {
+      children.push({ object: "block", type, divider: {} } as never);
+      return;
+    }
+    for (const text of chunkText(body)) {
+      const rich_text = [{ type: "text" as const, text: { content: text } }];
+      children.push({ object: "block", type, [type]: { rich_text, ...extra } } as never);
+    }
+  };
+  const raw = content.split("\n").map((l) => l.trimEnd());
+  for (let i = 0; i < raw.length; i++) {
+    const line = raw[i]!;
+    if (line.startsWith("```")) {
+      const lang = line.slice(3).trim().toLowerCase() || "plain text";
+      const code: string[] = [];
+      for (i++; i < raw.length && !raw[i]!.startsWith("```"); i++) code.push(raw[i]!);
+      lines.push(`\`\`\`${lang === "plain text" ? "" : lang} (${code.length} line(s))`);
+      push("code", code.join("\n") || " ", { language: lang });
+      continue;
+    }
+    if (line.length === 0) continue;
+    const { type, text, checked } = parseLine(line);
+    lines.push(line);
+    push(type, text, type === "to_do" ? { checked } : {});
+  }
+  if (children.length === 0) throw new UserError('"content" contains no non-empty lines.');
+  return { children, lines };
+}
+
+export async function handleCreatePage(
+  notion: NotionLike,
+  args: Record<string, unknown>
+): Promise<string> {
+  const parentId = validateAndNormalizeId(args["parent_page_id"], "parent_page_id");
+  const title = reqString(args, "title").trim();
+  if (!title) throw new UserError('"title" must not be empty.');
+  const content = optString(args, "content");
+  const { children } = content ? contentToBlocks(content) : { children: [] as never[] };
+  const page = (await notion.pages.create({
+    parent: { page_id: parentId },
+    properties: { title: { title: [{ type: "text", text: { content: title.slice(0, 2000) } }] } },
+    children: children.slice(0, MAX_APPEND_BLOCKS),
+  })) as PageObjectResponse;
+  let extra = "";
+  if (children.length > MAX_APPEND_BLOCKS) {
+    try {
+      for (let i = MAX_APPEND_BLOCKS; i < children.length; i += MAX_APPEND_BLOCKS) {
+        await notion.blocks.children.append({ block_id: page.id, children: children.slice(i, i + MAX_APPEND_BLOCKS) });
+      }
+    } catch (err) {
+      extra = `\nWarning: the page was created but only the first ${MAX_APPEND_BLOCKS} block(s) were written. ${extractErrorMessage(err)}`;
+    }
+  }
+  return `Created page "${title}"\n  id: ${page.id}\n  url: ${page.url}${extra}`;
+}
+
 export async function handleAppendToPage(
   notion: NotionLike,
   args: Record<string, unknown>
@@ -325,19 +414,7 @@ export async function handleAppendToPage(
   const id = validateAndNormalizeId(args["page_id"], "page_id");
   const content = reqString(args, "content");
 
-  const lines = content
-    .split("\n")
-    .map((l) => l.trimEnd())
-    .filter((l) => l.length > 0);
-  if (lines.length === 0) throw new UserError('"content" contains no non-empty lines.');
-
-  const children = lines.flatMap((line) =>
-    chunkText(line).map((text) => ({
-      object: "block" as const,
-      type: "paragraph" as const,
-      paragraph: { rich_text: [{ type: "text" as const, text: { content: text } }] },
-    }))
-  );
+  const { children, lines } = contentToBlocks(content);
 
   let appended = 0;
   try {
@@ -358,7 +435,7 @@ export async function handleAppendToPage(
   }
 
   return (
-    `Successfully appended ${children.length} paragraph block(s) to page ${id}.\n` +
+    `Successfully appended ${children.length} block(s) to page ${id}.\n` +
     `Preview:\n${lines.slice(0, 3).map((l) => `  ${l.length > 100 ? l.slice(0, 97) + "..." : l}`).join("\n")}` +
     (lines.length > 3 ? `\n  ... (${lines.length - 3} more line(s))` : "")
   );
@@ -385,6 +462,17 @@ export async function handleListChildren(
   return lines.join("\n");
 }
 
+function optJson(args: Record<string, unknown>, key: string): unknown {
+  const v = args[key];
+  if (v === undefined || v === null || v === "") return undefined;
+  if (typeof v !== "string") return v;
+  try {
+    return JSON.parse(v);
+  } catch {
+    throw new UserError(`"${key}" must be valid JSON (Notion API ${key} object).`);
+  }
+}
+
 export async function handleQueryDatabase(
   notion: NotionLike,
   args: Record<string, unknown>
@@ -392,10 +480,15 @@ export async function handleQueryDatabase(
   const id = validateAndNormalizeId(args["database_id"], "database_id");
   const limit = optInt(args, "limit", 20, 1, 100);
   const cursor = optString(args, "cursor");
+  const filter = optJson(args, "filter");
+  const sorts = optJson(args, "sorts");
+  if (sorts !== undefined && !Array.isArray(sorts)) throw new UserError('"sorts" must be a JSON array.');
 
   const res = await notion.databases.query({
     database_id: id,
     page_size: limit,
+    ...(filter !== undefined ? { filter: filter as never } : {}),
+    ...(sorts !== undefined ? { sorts: sorts as never } : {}),
     ...(cursor ? { start_cursor: cursor } : {}),
   });
   if (res.results.length === 0) return `No rows found in database ${id}.`;
@@ -458,12 +551,12 @@ export const TOOLS = [
   {
     name: "append_to_page",
     description:
-      "Append text to the end of a page. Each non-empty line becomes a paragraph block (lines over 2000 characters are split; large input is sent in batches of 100 blocks). Writes to Notion and cannot be undone by this server.",
+      "Append text to the end of a page. Each non-empty line becomes a block: plain paragraph, or heading (# / ## / ###), bullet (- ), numbered (1. ), to-do (- [ ] / - [x]), quote (> ) or divider (---) by its prefix; ``` fences become code blocks (lines over 2000 characters are split; large input is sent in batches of 100 blocks). Writes to Notion and cannot be undone by this server.",
     inputSchema: {
       type: "object" as const,
       properties: {
         page_id: { type: "string", description: `Page ID. ${ID_NOTE}` },
-        content: { type: "string", description: "Text to append; one paragraph per non-empty line" },
+        content: { type: "string", description: "Text to append; one block per non-empty line. Prefixes: # ## ### headings, - bullet, 1. numbered, - [ ] to-do" },
       },
       required: ["page_id", "content"],
     },
@@ -474,6 +567,21 @@ export const TOOLS = [
       idempotentHint: false,
       openWorldHint: true,
     },
+  },
+  {
+    name: "create_page",
+    description:
+      "Create a new page under an existing page, optionally with initial content (same light Markdown as append_to_page). Writes to Notion.",
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        parent_page_id: { type: "string", description: `Parent page ID. ${ID_NOTE}` },
+        title: { type: "string", description: "Page title" },
+        content: { type: "string", description: "Optional initial content (one block per line; ``` fences for code)" },
+      },
+      required: ["parent_page_id", "title"],
+    },
+    annotations: { title: "Create Notion page", readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: true },
   },
   {
     name: "list_children",
@@ -491,12 +599,14 @@ export const TOOLS = [
   {
     name: "query_database",
     description:
-      "Read rows of a Notion database (no filter): title, URL and common property values. Paginate with cursor.",
+      "Read rows of a Notion database: title, URL and common property values. Optional filter and sorts take Notion API JSON, e.g. filter {\"property\":\"Status\",\"select\":{\"equals\":\"Done\"}} and sorts [{\"property\":\"Name\",\"direction\":\"ascending\"}]. Paginate with cursor.",
     inputSchema: {
       type: "object" as const,
       properties: {
         database_id: { type: "string", description: `Database ID (from search_notion). ${ID_NOTE}` },
         limit: { type: "integer", minimum: 1, maximum: 100, default: 20, description: "Max rows per call" },
+        filter: { type: "string", description: "Notion API filter object as JSON string (optional)" },
+        sorts: { type: "string", description: "Notion API sorts array as JSON string (optional)" },
         cursor: { type: "string", description: "next_cursor from a previous call" },
       },
       required: ["database_id"],
@@ -508,6 +618,19 @@ export const TOOLS = [
 // ---------------------------------------------------------------------------
 // Dispatch + server factory (no side effects)
 // ---------------------------------------------------------------------------
+
+/** Retry read-only calls up to 2 times on HTTP 429 (rate limit) with a short backoff. */
+export async function withRetry<T>(fn: () => Promise<T>, delaysMs = [1000, 2000]): Promise<T> {
+  for (let i = 0; ; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      const rateLimited = err instanceof APIResponseError && err.status === 429;
+      if (!rateLimited || i >= delaysMs.length) throw err;
+      await new Promise((r) => setTimeout(r, delaysMs[i]));
+    }
+  }
+}
 
 export async function callTool(
   notion: NotionLike | null,
@@ -525,11 +648,14 @@ export async function callTool(
         : {};
     let text: string;
     switch (name) {
-      case "search_notion": text = await handleSearchNotion(notion, args); break;
-      case "get_page": text = await handleGetPage(notion, args); break;
+      case "search_notion": text = await withRetry(() => handleSearchNotion(notion, args)); break;
+      case "get_page": text = await withRetry(() => handleGetPage(notion, args)); break;
+      case "list_children": text = await withRetry(() => handleListChildren(notion, args)); break;
+      case "query_database": text = await withRetry(() => handleQueryDatabase(notion, args)); break;
+      // Writes are never retried automatically (a retry after a partial write would duplicate blocks).
       case "append_to_page": text = await handleAppendToPage(notion, args); break;
-      case "list_children": text = await handleListChildren(notion, args); break;
-      default: text = await handleQueryDatabase(notion, args);
+      case "create_page": text = await handleCreatePage(notion, args); break;
+      default: throw new UserError(`Unhandled tool: "${name}".`);
     }
     return { content: [{ type: "text", text }] };
   } catch (err) {

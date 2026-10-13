@@ -7,6 +7,14 @@ Notion の公式 SDK を使い、Claude Desktop / Claude Code からページの
 
 ---
 
+## Quick start (English)
+
+```bash
+claude mcp add notion -e NOTION_API_KEY=<your integration token> -- npx -y notion-lite-mcp
+```
+
+Tools: `search_notion`, `get_page`, `list_children`, `query_database` (filter/sorts as JSON), `append_to_page` and `create_page` (light Markdown: headings, lists, to-dos, quotes, code). Read tools retry on 429; writes never auto-retry. Search, read, query and write Notion pages via the official Notion API. Create an internal integration at https://www.notion.so/profile/integrations and share the pages with it. Tool descriptions and error hints are in English; the detailed guide below is in Japanese.
+
 ## 必要なもの
 
 - Node.js 18 以上
@@ -18,7 +26,7 @@ Notion の公式 SDK を使い、Claude Desktop / Claude Code からページの
 
 ### 1. インテグレーションを作成する
 
-1. [https://www.notion.so/my-integrations](https://www.notion.so/my-integrations) にアクセス
+1. [https://www.notion.so/profile/integrations](https://www.notion.so/profile/integrations) にアクセス
 2. 「新しいインテグレーション」をクリック
 3. 名前を入力（例: `Claude MCP`）し、ワークスペースを選択
 4. 「送信」をクリック
@@ -120,10 +128,11 @@ claude mcp add notion-lite -e NOTION_API_KEY=ntn_xxxx -- npx -y notion-lite-mcp
 | ツール | 種別 | 説明 |
 |---|---|---|
 | `search_notion` | 読み取り | タイトルでページ/DBを検索。`limit`(1-100)、`type`(page/database)、`cursor` |
-| `get_page` | 読み取り | ページ本文をテキスト化。入れ子ブロックを `max_depth`(既定3)まで展開、`max_chars`(既定20000)で打ち切り |
+| `get_page` | 読み取り | ページ本文とプロパティをテキスト化。入れ子ブロックを `max_depth`(既定3)まで展開、`max_chars`(既定20000)で打ち切り |
 | `list_children` | 読み取り | 直下の子ブロック一覧（type・プレビュー・ID） |
-| `query_database` | 読み取り | DB の行を取得（タイトル・URL・主要プロパティ）。`limit`、`cursor` |
-| `append_to_page` | **書き込み** | ページ末尾に段落を追記。1行2000文字超は自動分割、100ブロックごとにバッチ送信 |
+| `query_database` | 読み取り | DB の行を取得（タイトル・URL・主要プロパティ）。`limit`、`cursor`、`filter` / `sorts`（Notion API の JSON 文字列） |
+| `create_page` | **書き込み** | 既存ページの下に新規ページを作成（`parent_page_id`、`title`、任意の `content`。書式は `append_to_page` と同じ） |
+| `append_to_page` | **書き込み** | ページ末尾に追記。行頭の `# ` `## ` `### `（見出し）、`- `（箇条書き）、`1. `（番号）、`- [ ]` `- [x]`（To-do）、`> `（引用）、`---`（区切り線）、``` で囲んだ範囲（コード）を対応ブロックに変換。1行2000文字超は自動分割、100ブロックごとにバッチ送信 |
 
 検索・DB取得は続きがあると `next_cursor` を返します。次の呼び出しの `cursor` に渡してください。
 
@@ -194,12 +203,14 @@ NOTION_API_KEY=ntn_xxxx npm start
 
 ---
 
+## 既知の制約
+
+- 読み取りは書式（太字・リンク等）を落としたプレーンテキストです。ブロックの更新・削除、DB 行の作成・プロパティ更新はできません（追記と、ページ配下への新規ページ作成のみ）。
+- 未対応のブロック型（synced_block など）は `[type]` と表示されます。
+- 読み取り系は HTTP 429（レート制限）のとき最大2回自動リトライします。書き込みは重複を避けるため自動リトライしません。
+- Notion API `2022-06-28` 固定（`@notionhq/client` v2）です。複数データソースを持つ新方式の DB には未対応です。
+- エラーメッセージのヒントは英語です。
+
 ## ライセンス
 
 MIT
-
-## 既知の制約
-
-- `get_page` はページ本文（ブロック）を返し、ページのプロパティは返しません。DB の行のプロパティは `query_database` で読めます（DB もインテグレーションへの共有が必要）。
-- Notion API `2022-06-28` 固定（`@notionhq/client` v2）です。複数データソースを持つ新方式の DB には未対応です。
-- エラーメッセージのヒントは英語です。

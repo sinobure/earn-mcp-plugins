@@ -3,8 +3,6 @@
   "version": "1.0.0",
   "description": "MCP server for real-time exchange rates using open.er-api.com",
   "type": "module",
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
   "bin": {
     "fx-rate-mcp": "dist/index.js"
   },
@@ -13,7 +11,8 @@
     "!dist/**/*.map",
     "!dist/**/*.test.*",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsc",
@@ -35,7 +34,10 @@
     "claude",
     "ai"
   ],
-  "author": "Kento Watarai",
+  "author": {
+    "name": "Kento Watarai",
+    "url": "https://github.com/sinobure"
+  },
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -58,5 +60,8 @@
   "bugs": {
     "url": "https://github.com/sinobure/earn-mcp-plugins/issues"
   },
-  "homepage": "https://github.com/sinobure/earn-mcp-plugins/tree/main/exchange-rate-mcp#readme"
+  "homepage": "https://github.com/sinobure/earn-mcp-plugins/tree/main/exchange-rate-mcp#readme",
+  "publishConfig": {
+    "access": "public"
+  }
 }
