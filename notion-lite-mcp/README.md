@@ -26,7 +26,7 @@ Search, read, query and append to Notion pages via the official Notion API. Crea
 
 ### 1. インテグレーションを作成する
 
-1. [https://www.notion.so/my-integrations](https://www.notion.so/my-integrations) にアクセス
+1. [https://www.notion.so/profile/integrations](https://www.notion.so/profile/integrations) にアクセス
 2. 「新しいインテグレーション」をクリック
 3. 名前を入力（例: `Claude MCP`）し、ワークスペースを選択
 4. 「送信」をクリック
@@ -130,8 +130,8 @@ claude mcp add notion-lite -e NOTION_API_KEY=ntn_xxxx -- npx -y notion-lite-mcp
 | `search_notion` | 読み取り | タイトルでページ/DBを検索。`limit`(1-100)、`type`(page/database)、`cursor` |
 | `get_page` | 読み取り | ページ本文をテキスト化。入れ子ブロックを `max_depth`(既定3)まで展開、`max_chars`(既定20000)で打ち切り |
 | `list_children` | 読み取り | 直下の子ブロック一覧（type・プレビュー・ID） |
-| `query_database` | 読み取り | DB の行を取得（タイトル・URL・主要プロパティ）。`limit`、`cursor` |
-| `append_to_page` | **書き込み** | ページ末尾に段落を追記。1行2000文字超は自動分割、100ブロックごとにバッチ送信 |
+| `query_database` | 読み取り | DB の行を取得（タイトル・URL・主要プロパティ）。`limit`、`cursor`、`filter` / `sorts`（Notion API の JSON 文字列） |
+| `append_to_page` | **書き込み** | ページ末尾に追記。行頭の `# ` `## ` `### `（見出し）、`- `（箇条書き）、`1. `（番号）、`- [ ]` `- [x]`（To-do）を対応ブロックに変換。1行2000文字超は自動分割、100ブロックごとにバッチ送信 |
 
 検索・DB取得は続きがあると `next_cursor` を返します。次の呼び出しの `cursor` に渡してください。
 

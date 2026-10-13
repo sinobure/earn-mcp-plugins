@@ -31,7 +31,7 @@ export class UserError extends Error {}
 
 export const MISSING_TOKEN_MESSAGE =
   "NOTION_API_KEY is not set. Create an internal integration at " +
-  "https://www.notion.so/my-integrations, copy its secret (starts with ntn_ or secret_), " +
+  "https://www.notion.so/profile/integrations, copy its secret (starts with ntn_ or secret_), " +
   'and set it in the MCP server "env" as NOTION_API_KEY. Then share the target pages with ' +
   'the integration (page menu "..." > "Connections") and restart the client.';
 
@@ -318,6 +318,25 @@ export function chunkText(text: string, size = MAX_RICH_TEXT): string[] {
   return chunks;
 }
 
+type LineBlock = {
+  type: "paragraph" | "heading_1" | "heading_2" | "heading_3" | "bulleted_list_item" | "numbered_list_item" | "to_do";
+  text: string;
+  checked?: boolean;
+};
+
+/** Lightweight Markdown: "# ", "## ", "### ", "- ", "1. ", "- [ ] ", "- [x] " prefixes. */
+export function parseLine(line: string): LineBlock {
+  let m = /^- \[( |x|X)\] (.+)$/.exec(line);
+  if (m) return { type: "to_do", text: m[2], checked: m[1] !== " " };
+  m = /^(#{1,3}) (.+)$/.exec(line);
+  if (m) return { type: `heading_${m[1].length}` as LineBlock["type"], text: m[2] };
+  m = /^[-*] (.+)$/.exec(line);
+  if (m) return { type: "bulleted_list_item", text: m[1] };
+  m = /^\d+\. (.+)$/.exec(line);
+  if (m) return { type: "numbered_list_item", text: m[1] };
+  return { type: "paragraph", text: line };
+}
+
 export async function handleAppendToPage(
   notion: NotionLike,
   args: Record<string, unknown>
@@ -331,13 +350,14 @@ export async function handleAppendToPage(
     .filter((l) => l.length > 0);
   if (lines.length === 0) throw new UserError('"content" contains no non-empty lines.');
 
-  const children = lines.flatMap((line) =>
-    chunkText(line).map((text) => ({
-      object: "block" as const,
-      type: "paragraph" as const,
-      paragraph: { rich_text: [{ type: "text" as const, text: { content: text } }] },
-    }))
-  );
+  const children = lines.flatMap((line) => {
+    const { type, text: body, checked } = parseLine(line);
+    return chunkText(body).map((text) => {
+      const rich_text = [{ type: "text" as const, text: { content: text } }];
+      const data = type === "to_do" ? { rich_text, checked } : { rich_text };
+      return { object: "block" as const, type, [type]: data } as never;
+    });
+  });
 
   let appended = 0;
   try {
@@ -358,7 +378,7 @@ export async function handleAppendToPage(
   }
 
   return (
-    `Successfully appended ${children.length} paragraph block(s) to page ${id}.\n` +
+    `Successfully appended ${children.length} block(s) to page ${id}.\n` +
     `Preview:\n${lines.slice(0, 3).map((l) => `  ${l.length > 100 ? l.slice(0, 97) + "..." : l}`).join("\n")}` +
     (lines.length > 3 ? `\n  ... (${lines.length - 3} more line(s))` : "")
   );
@@ -385,6 +405,17 @@ export async function handleListChildren(
   return lines.join("\n");
 }
 
+function optJson(args: Record<string, unknown>, key: string): unknown {
+  const v = args[key];
+  if (v === undefined || v === null || v === "") return undefined;
+  if (typeof v !== "string") return v;
+  try {
+    return JSON.parse(v);
+  } catch {
+    throw new UserError(`"${key}" must be valid JSON (Notion API ${key} object).`);
+  }
+}
+
 export async function handleQueryDatabase(
   notion: NotionLike,
   args: Record<string, unknown>
@@ -392,10 +423,15 @@ export async function handleQueryDatabase(
   const id = validateAndNormalizeId(args["database_id"], "database_id");
   const limit = optInt(args, "limit", 20, 1, 100);
   const cursor = optString(args, "cursor");
+  const filter = optJson(args, "filter");
+  const sorts = optJson(args, "sorts");
+  if (sorts !== undefined && !Array.isArray(sorts)) throw new UserError('"sorts" must be a JSON array.');
 
   const res = await notion.databases.query({
     database_id: id,
     page_size: limit,
+    ...(filter !== undefined ? { filter: filter as never } : {}),
+    ...(sorts !== undefined ? { sorts: sorts as never } : {}),
     ...(cursor ? { start_cursor: cursor } : {}),
   });
   if (res.results.length === 0) return `No rows found in database ${id}.`;
@@ -458,12 +494,12 @@ export const TOOLS = [
   {
     name: "append_to_page",
     description:
-      "Append text to the end of a page. Each non-empty line becomes a paragraph block (lines over 2000 characters are split; large input is sent in batches of 100 blocks). Writes to Notion and cannot be undone by this server.",
+      "Append text to the end of a page. Each non-empty line becomes a block: plain paragraph, or heading (# / ## / ###), bullet (- ), numbered (1. ) or to-do (- [ ] / - [x]) by its prefix (lines over 2000 characters are split; large input is sent in batches of 100 blocks). Writes to Notion and cannot be undone by this server.",
     inputSchema: {
       type: "object" as const,
       properties: {
         page_id: { type: "string", description: `Page ID. ${ID_NOTE}` },
-        content: { type: "string", description: "Text to append; one paragraph per non-empty line" },
+        content: { type: "string", description: "Text to append; one block per non-empty line. Prefixes: # ## ### headings, - bullet, 1. numbered, - [ ] to-do" },
       },
       required: ["page_id", "content"],
     },
@@ -491,12 +527,14 @@ export const TOOLS = [
   {
     name: "query_database",
     description:
-      "Read rows of a Notion database (no filter): title, URL and common property values. Paginate with cursor.",
+      "Read rows of a Notion database: title, URL and common property values. Optional filter and sorts take Notion API JSON, e.g. filter {\"property\":\"Status\",\"select\":{\"equals\":\"Done\"}} and sorts [{\"property\":\"Name\",\"direction\":\"ascending\"}]. Paginate with cursor.",
     inputSchema: {
       type: "object" as const,
       properties: {
         database_id: { type: "string", description: `Database ID (from search_notion). ${ID_NOTE}` },
         limit: { type: "integer", minimum: 1, maximum: 100, default: 20, description: "Max rows per call" },
+        filter: { type: "string", description: "Notion API filter object as JSON string (optional)" },
+        sorts: { type: "string", description: "Notion API sorts array as JSON string (optional)" },
         cursor: { type: "string", description: "next_cursor from a previous call" },
       },
       required: ["database_id"],

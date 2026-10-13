@@ -8,6 +8,7 @@ import {
   createServer,
   TOOLS,
   MISSING_TOKEN_MESSAGE,
+  parseLine,
   type NotionLike,
 } from "./server.js";
 
@@ -175,6 +176,40 @@ describe("search_notion / query_database", () => {
     expect(out).toContain("[row] Row");
     expect(out).toContain("Tags: a, b");
     expect(out).toContain("Done: true");
+  });
+});
+
+describe("filter / sorts / markdown", () => {
+  it("passes filter and sorts (JSON strings) to the API", async () => {
+    const n = fake();
+    n.databases.query.mockResolvedValue({ results: [], has_more: false });
+    await callTool(n, "query_database", {
+      database_id: ID,
+      filter: '{"property":"Status","select":{"equals":"Done"}}',
+      sorts: '[{"property":"Name","direction":"ascending"}]',
+    });
+    expect(n.databases.query.mock.calls[0]![0]).toMatchObject({
+      filter: { property: "Status", select: { equals: "Done" } },
+      sorts: [{ property: "Name", direction: "ascending" }],
+    });
+  });
+  it("rejects invalid JSON filter with a clear error", async () => {
+    const r = await callTool(fake(), "query_database", { database_id: ID, filter: "{bad" });
+    expect(r.isError).toBe(true);
+    expect(text(r)).toContain("valid JSON");
+  });
+  it("parses markdown prefixes", () => {
+    expect(parseLine("## Title")).toEqual({ type: "heading_2", text: "Title" });
+    expect(parseLine("- item")).toEqual({ type: "bulleted_list_item", text: "item" });
+    expect(parseLine("3. step")).toEqual({ type: "numbered_list_item", text: "step" });
+    expect(parseLine("- [x] done")).toEqual({ type: "to_do", text: "done", checked: true });
+    expect(parseLine("plain")).toEqual({ type: "paragraph", text: "plain" });
+  });
+  it("appends mixed block types", async () => {
+    const n = fake();
+    await callTool(n, "append_to_page", { page_id: ID, content: "# H\n- a\ntext" });
+    const kids = n.blocks.children.append.mock.calls[0]![0].children;
+    expect(kids.map((k: { type: string }) => k.type)).toEqual(["heading_1", "bulleted_list_item", "paragraph"]);
   });
 });
 
