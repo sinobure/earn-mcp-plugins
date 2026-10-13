@@ -21,7 +21,8 @@ beforeAll(async () => {
   root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "md2pdf-root-")));
   outside = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "md2pdf-out-")));
   await fs.writeFile(path.join(outside, "secret.md"), "# secret");
-  await fs.symlink(outside, path.join(root, "link"));
+  // "junction" avoids the admin/developer-mode requirement on Windows; ignored elsewhere.
+  await fs.symlink(outside, path.join(root, "link"), "junction");
   await fs.writeFile(path.join(root, "doc.md"), "# こんにちは\n\n本文");
 });
 afterAll(async () => {
