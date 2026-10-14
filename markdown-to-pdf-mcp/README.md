@@ -1,7 +1,7 @@
-# md2pdf-mcp
+# kw-md2pdf-mcp
 
 [![CI](https://github.com/sinobure/earn-mcp-plugins/actions/workflows/ci.yml/badge.svg)](https://github.com/sinobure/earn-mcp-plugins/actions/workflows/ci.yml)
-[![npm version](https://img.shields.io/npm/v/md2pdf-mcp.svg)](https://www.npmjs.com/package/md2pdf-mcp)
+[![npm version](https://img.shields.io/npm/v/kw-md2pdf-mcp.svg)](https://www.npmjs.com/package/kw-md2pdf-mcp)
 
 > **重要: このサーバーは PDF を直接出力しません。** Markdown を A4 印刷向けの HTML に変換し、
 > ブラウザで開いて **Ctrl+P（Cmd+P）→「PDF に保存」** で PDF にする運用です（Puppeteer 等の重い依存は持ちません）。
@@ -13,15 +13,15 @@ Markdown を **印刷最適化 HTML** に変換する MCP (Model Context Protoco
 ## インストール
 
 ```bash
-npm install -g md2pdf-mcp
+npm install -g kw-md2pdf-mcp
 ```
 
 ## Claude Code への登録
 
 ```bash
-claude mcp add md2pdf -- npx -y md2pdf-mcp
+claude mcp add md2pdf -- npx -y kw-md2pdf-mcp
 # 書き込み/読み込みを許可するディレクトリを増やす場合（既定は起動ディレクトリ配下のみ）
-claude mcp add md2pdf -e MD2PDF_ALLOWED_DIRS=/path/to/docs -- npx -y md2pdf-mcp
+claude mcp add md2pdf -e MD2PDF_ALLOWED_DIRS=/path/to/docs -- npx -y kw-md2pdf-mcp
 ```
 
 ## Claude Desktop への登録
@@ -36,7 +36,7 @@ claude mcp add md2pdf -e MD2PDF_ALLOWED_DIRS=/path/to/docs -- npx -y md2pdf-mcp
 {
   "mcpServers": {
     "md2pdf": {
-      "command": "md2pdf-mcp"
+      "command": "kw-md2pdf-mcp"
     }
   }
 }
@@ -49,7 +49,7 @@ npx で使う場合:
   "mcpServers": {
     "md2pdf": {
       "command": "npx",
-      "args": ["-y", "md2pdf-mcp"],
+      "args": ["-y", "kw-md2pdf-mcp"],
       "env": { "MD2PDF_ALLOWED_DIRS": "/Users/me/Documents" }
     }
   }

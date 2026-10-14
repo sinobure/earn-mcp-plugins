@@ -20,7 +20,7 @@ PLUGINS=(
   "notion-lite-mcp"
   "time-mcp"              # directory name. npm package name is kw-time-mcp
   "rss-mcp"               # directory name. npm package name is kw-rss-mcp
-  "markdown-to-pdf-mcp"   # directory name. npm package name is md2pdf-mcp
+  "markdown-to-pdf-mcp"   # directory name. npm package name is kw-md2pdf-mcp
 )
 
 # Directory name -> npm package name (for clearer log output).
@@ -30,7 +30,7 @@ NPM_NAME["exchange-rate-mcp"]="fx-rate-mcp"
 NPM_NAME["notion-lite-mcp"]="notion-lite-mcp"
 NPM_NAME["time-mcp"]="kw-time-mcp"
 NPM_NAME["rss-mcp"]="kw-rss-mcp"
-NPM_NAME["markdown-to-pdf-mcp"]="md2pdf-mcp"
+NPM_NAME["markdown-to-pdf-mcp"]="kw-md2pdf-mcp"
 
 echo "== MCP Plugin Publisher =="
 echo

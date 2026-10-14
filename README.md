@@ -10,7 +10,7 @@ Model Context Protocol (MCP) プラグイン集。Claude Desktop / Claude Code /
 | [notion-lite-mcp](./notion-lite-mcp/) | `notion-lite-mcp` | Notion軽量連携（search / get / append / list_children） |
 | [time-mcp](./time-mcp/) | `kw-time-mcp` | 時刻・タイムゾーン変換・日本の祝日判定 |
 | [rss-mcp](./rss-mcp/) | `kw-rss-mcp` | RSS/Atomフィード取得 |
-| [markdown-to-pdf-mcp](./markdown-to-pdf-mcp/) | `md2pdf-mcp` | Markdown → 印刷最適化HTML 変換 |
+| [markdown-to-pdf-mcp](./markdown-to-pdf-mcp/) | `kw-md2pdf-mcp` | Markdown → 印刷最適化HTML 変換 |
 
 ## 共通仕様
 
