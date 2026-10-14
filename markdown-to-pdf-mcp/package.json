@@ -1,10 +1,10 @@
 {
-  "name": "md2pdf-mcp",
+  "name": "kw-md2pdf-mcp",
   "version": "1.0.0",
   "description": "MCP server that converts Markdown to print-optimized A4 HTML (not a PDF: save as PDF via browser Ctrl+P). No API key required.",
   "type": "module",
   "bin": {
-    "md2pdf-mcp": "dist/index.js"
+    "kw-md2pdf-mcp": "dist/index.js"
   },
   "files": [
     "dist/index.js",
